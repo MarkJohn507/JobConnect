@@ -8,7 +8,7 @@ import DashboardPage from './pages/DashboardPage'
 import ApplicationsPage from './pages/ApplicationsPage'
 import ProfilePage from './pages/ProfilePage'
 import AdminLoginPage from './pages/AdminLoginPage'
-import AdminDashboardPage from './pages/AdminDashboardPage'
+import { AdminDashboardPage, AdminUsersPage, AdminApplicationsPage, AdminAnalyticsPage } from './pages/AdminDashboardPage'
 import Layout from './components/layout/Layout'
 
 function PrivateRoute({ children }) {
@@ -24,19 +24,20 @@ function PublicRoute({ children }) {
 export default function App() {
   return (
     <Routes>
-      {/* Landing */}
       <Route path="/" element={<LandingPage />} />
 
-      {/* Auth */}
       <Route path="/login"           element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/register"        element={<PublicRoute><RegisterPage /></PublicRoute>} />
       <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
 
       {/* Admin */}
-      <Route path="/admin/login"     element={<AdminLoginPage />} />
-      <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+      <Route path="/admin/login"        element={<AdminLoginPage />} />
+      <Route path="/admin/dashboard"    element={<AdminDashboardPage />} />
+      <Route path="/admin/users"        element={<AdminUsersPage />} />
+      <Route path="/admin/applications" element={<AdminApplicationsPage />} />
+      <Route path="/admin/analytics"    element={<AdminAnalyticsPage />} />
 
-      {/* App (protected) */}
+      {/* User app */}
       <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
         <Route path="dashboard"    element={<DashboardPage />} />
         <Route path="applications" element={<ApplicationsPage />} />
