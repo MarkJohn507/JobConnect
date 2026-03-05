@@ -1,10 +1,14 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
+import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import DashboardPage from './pages/DashboardPage'
 import ApplicationsPage from './pages/ApplicationsPage'
 import ProfilePage from './pages/ProfilePage'
+import AdminLoginPage from './pages/AdminLoginPage'
+import AdminDashboardPage from './pages/AdminDashboardPage'
 import Layout from './components/layout/Layout'
 
 function PrivateRoute({ children }) {
@@ -20,24 +24,26 @@ function PublicRoute({ children }) {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      {/* Landing */}
+      <Route path="/" element={<LandingPage />} />
 
-      <Route path="/login" element={
-        <PublicRoute><LoginPage /></PublicRoute>
-      } />
-      <Route path="/register" element={
-        <PublicRoute><RegisterPage /></PublicRoute>
-      } />
+      {/* Auth */}
+      <Route path="/login"           element={<PublicRoute><LoginPage /></PublicRoute>} />
+      <Route path="/register"        element={<PublicRoute><RegisterPage /></PublicRoute>} />
+      <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
 
-      <Route path="/" element={
-        <PrivateRoute><Layout /></PrivateRoute>
-      }>
-        <Route path="dashboard" element={<DashboardPage />} />
+      {/* Admin */}
+      <Route path="/admin/login"     element={<AdminLoginPage />} />
+      <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+
+      {/* App (protected) */}
+      <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
+        <Route path="dashboard"    element={<DashboardPage />} />
         <Route path="applications" element={<ApplicationsPage />} />
-        <Route path="profile" element={<ProfilePage />} />
+        <Route path="profile"      element={<ProfilePage />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

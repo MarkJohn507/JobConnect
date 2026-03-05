@@ -3,7 +3,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  fetchSignInMethodsForEmail
 } from 'firebase/auth'
 import {
   collection, addDoc, updateDoc, deleteDoc,
@@ -23,8 +24,16 @@ export const logout = () => signOut(auth)
 export const updateUserProfile = (name) =>
   updateProfile(auth.currentUser, { displayName: name })
 
-export const resetPassword = (email) =>
-  sendPasswordResetEmail(auth, email)
+export const resetPassword = async (email) => {
+  // Check if the email is registered before sending
+  const methods = await fetchSignInMethodsForEmail(auth, email)
+  if (methods.length === 0) {
+    const err = new Error('No account found with that email address.')
+    err.code = 'auth/user-not-found'
+    throw err
+  }
+  return sendPasswordResetEmail(auth, email)
+}
 
 // ── Applications ──────────────────────────────────────
 export const addApplication = (uid, data) =>

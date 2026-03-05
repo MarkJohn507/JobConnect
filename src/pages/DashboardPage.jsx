@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { getUserApplications } from '../firebase/firestore'
-import { format, isAfter, addDays } from 'date-fns'
-import { Briefcase, CheckCircle, XCircle, Clock, TrendingUp, CalendarClock } from 'lucide-react'
+import { format, isAfter } from 'date-fns'
 
 const STATUS_COLORS = {
   Applied:   '#60a5fa',
@@ -18,17 +17,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    console.log('Dashboard: loading for uid', currentUser.uid)
     getUserApplications(currentUser.uid)
-      .then(data => {
-        console.log('Dashboard: loaded', data.length, 'apps')
-        setApps(data)
-        setLoading(false)
-      })
-      .catch(err => {
-        console.error('Dashboard load error:', err.code, err.message)
-        setLoading(false)
-      })
+      .then(data => { setApps(data); setLoading(false) })
+      .catch(() => setLoading(false))
   }, [currentUser])
 
   const counts = {
@@ -45,10 +36,7 @@ export default function DashboardPage() {
     .slice(0, 5)
 
   const recent = [...apps].slice(0, 5)
-
-  const successRate = counts.total
-    ? Math.round((counts.offered / counts.total) * 100)
-    : 0
+  const successRate = counts.total ? Math.round((counts.offered / counts.total) * 100) : 0
 
   if (loading) return <LoadingState />
 
@@ -63,14 +51,14 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stat cards */}
+      {/* Stat cards — no icons, color accent bar on left */}
       <div style={s.statsGrid}>
-        <StatCard icon={<Briefcase size={20}/>} label="Total Applications" value={counts.total} color="#6c63ff" />
-        <StatCard icon={<Clock size={20}/>}      label="In Review"          value={counts.applied}   color="#60a5fa" />
-        <StatCard icon={<CheckCircle size={20}/>} label="Interviews"        value={counts.interview} color="#4ade80" />
-        <StatCard icon={<TrendingUp size={20}/>}  label="Offers Received"   value={counts.offered}   color="#fbbf24" />
-        <StatCard icon={<XCircle size={20}/>}     label="Rejected"          value={counts.rejected}  color="#f87171" />
-        <StatCard icon={<TrendingUp size={20}/>}  label="Success Rate"      value={`${successRate}%`} color="#a78bfa" />
+        <StatCard label="Total Applications" value={counts.total}     color="#6c63ff" />
+        <StatCard label="In Review"          value={counts.applied}   color="#60a5fa" />
+        <StatCard label="Interviews"         value={counts.interview} color="#4ade80" />
+        <StatCard label="Offers Received"    value={counts.offered}   color="#fbbf24" />
+        <StatCard label="Rejected"           value={counts.rejected}  color="#f87171" />
+        <StatCard label="Success Rate"       value={`${successRate}%`} color="#a78bfa" />
       </div>
 
       <div style={s.row}>
@@ -99,7 +87,7 @@ export default function DashboardPage() {
 
         {/* Upcoming deadlines */}
         <div style={s.card}>
-          <h3 style={s.cardTitle}><CalendarClock size={16}/> Upcoming Deadlines</h3>
+          <h3 style={s.cardTitle}>Upcoming Deadlines</h3>
           {upcoming.length === 0
             ? <Empty text="No upcoming deadlines" />
             : upcoming.map(app => {
@@ -136,7 +124,7 @@ export default function DashboardPage() {
               <table style={s.table}>
                 <thead>
                   <tr>
-                    {['Company','Position','Status','Applied Date'].map(h => (
+                    {['Company', 'Position', 'Status', 'Applied Date'].map(h => (
                       <th key={h} style={s.th}>{h}</th>
                     ))}
                   </tr>
@@ -146,13 +134,9 @@ export default function DashboardPage() {
                     <tr key={app.id} style={s.tr}>
                       <td style={s.td}>{app.company}</td>
                       <td style={s.td}>{app.position}</td>
+                      <td style={s.td}><StatusBadge status={app.status} /></td>
                       <td style={s.td}>
-                        <StatusBadge status={app.status} />
-                      </td>
-                      <td style={s.td}>
-                        {app.appliedDate
-                          ? format(new Date(app.appliedDate), 'MMM d, yyyy')
-                          : '—'}
+                        {app.appliedDate ? format(new Date(app.appliedDate), 'MMM d, yyyy') : '—'}
                       </td>
                     </tr>
                   ))}
@@ -166,16 +150,11 @@ export default function DashboardPage() {
   )
 }
 
-function StatCard({ icon, label, value, color }) {
+function StatCard({ label, value, color }) {
   return (
-    <div style={{ ...s.statCard }}>
-      <div style={{ ...s.statIcon, background: color + '22', color }}>
-        {icon}
-      </div>
-      <div>
-        <div style={s.statValue}>{value}</div>
-        <div style={s.statLabel}>{label}</div>
-      </div>
+    <div style={{ ...s.statCard, borderLeft: `4px solid ${color}` }}>
+      <div style={{ ...s.statValue, color }}>{value}</div>
+      <div style={s.statLabel}>{label}</div>
     </div>
   )
 }
@@ -189,7 +168,7 @@ function StatusBadge({ status }) {
     Withdrawn: 'status-withdrawn'
   }
   return (
-    <span className={map[status] || 'status-applied'} style={s.badge}>
+    <span className={map[status] || 'status-applied'} style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6 }}>
       {status}
     </span>
   )
@@ -208,22 +187,22 @@ function LoadingState() {
 }
 
 const s = {
-  header: { marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
+  header: { marginBottom: 28 },
   greeting: { fontFamily: 'var(--font-display)', fontSize: 26, color: 'var(--text)', marginBottom: 4 },
   date: { color: 'var(--text2)', fontSize: 13 },
   statsGrid: {
-    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14, marginBottom: 20
+    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+    gap: 14, marginBottom: 20
   },
   statCard: {
     background: 'var(--surface)', border: '1px solid var(--border)',
-    borderRadius: 12, padding: '16px', display: 'flex', alignItems: 'center', gap: 12
+    borderRadius: 12, padding: '18px 16px'
   },
-  statIcon: { width: 40, height: 40, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  statValue: { fontSize: 22, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 },
-  statLabel: { fontSize: 11, color: 'var(--text2)', marginTop: 2 },
+  statValue: { fontSize: 28, fontWeight: 700, lineHeight: 1.1, marginBottom: 4 },
+  statLabel: { fontSize: 12, color: 'var(--text2)' },
   row: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 },
   card: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 },
-  cardTitle: { fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 },
+  cardTitle: { fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 16 },
   barRow: { marginBottom: 12 },
   barBg: { height: 6, background: 'var(--surface2)', borderRadius: 3, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 3, transition: 'width 0.4s ease' },
@@ -234,6 +213,5 @@ const s = {
   table: { width: '100%', borderCollapse: 'collapse' },
   th: { textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text2)', padding: '8px 12px', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--border)' },
   tr: { borderBottom: '1px solid var(--border)' },
-  td: { padding: '10px 12px', fontSize: 13, color: 'var(--text)' },
-  badge: { fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6 }
+  td: { padding: '10px 12px', fontSize: 13, color: 'var(--text)' }
 }
