@@ -30,11 +30,18 @@ export const isAdminEmail = async (email) => {
 // ── Auth ──────────────────────────────────────────────
 export const register = async (email, password) => {
   // Block registration if email is already used by an admin account
-  const adminEmail = await isAdminEmail(email)
-  if (adminEmail) {
-    const err = new Error('This email is reserved and cannot be used for registration.')
-    err.code = 'auth/admin-email-reserved'
-    throw err
+  // Wrapped in try/catch so a Firestore permission error never blocks registration
+  try {
+    const adminEmail = await isAdminEmail(email)
+    if (adminEmail) {
+      const err = new Error('This email is reserved and cannot be used for registration.')
+      err.code = 'auth/admin-email-reserved'
+      throw err
+    }
+  } catch (e) {
+    // Only re-throw if it is our own admin-email-reserved error
+    if (e.code === 'auth/admin-email-reserved') throw e
+    // Otherwise (permission denied, network, etc.) just continue
   }
 
   const cred = await createUserWithEmailAndPassword(auth, email, password)

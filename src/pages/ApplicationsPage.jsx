@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '../context/AuthContext'
 import { getUserApplications, addApplication, updateApplication, deleteApplication, uploadResume } from '../firebase/firestore'
 import toast from 'react-hot-toast'
@@ -149,10 +150,11 @@ export default function ApplicationsPage() {
             </div>
       }
 
-      {/* Modal */}
-      {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-box fade-in" onClick={e => e.stopPropagation()}>
+      {/* Modal — rendered via portal so sidebar transform does not break fixed positioning */}
+      {showModal && createPortal(
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.65)', zIndex:9999, overflowY:'auto' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100%', padding:'24px 16px', boxSizing:'border-box' }}>
+          <div className="fade-in" style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:16, width:'100%', maxWidth:600 }}>
             <div style={s.modalHead}>
               <span style={{ fontSize:16, fontWeight:700, color:'var(--text)' }}>{editing ? 'Edit' : 'Add'} Application</span>
               <button style={s.closeBtn} onClick={() => setShowModal(false)}><X size={18}/></button>
@@ -227,7 +229,8 @@ export default function ApplicationsPage() {
               </div>
             </form>
           </div>
-        </div>
+          </div>
+        </div>, document.body
       )}
     </div>
   )
@@ -249,8 +252,6 @@ function DeadlineCell({ d }) {
 
 const s = {
   iconBtn: { background:'none', border:'none', color:'var(--text2)', cursor:'pointer', padding:5, display:'flex', borderRadius:4 },
-  overlay: { position:'fixed', inset:0, background:'rgba(0,0,0,0.65)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:300, padding:16 },
-  modal: { background:'var(--surface)', border:'1px solid var(--border)', borderRadius:16, width:'100%', maxWidth:600, maxHeight:'92vh', overflowY:'auto' },
   modalHead: { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'18px 24px', borderBottom:'1px solid var(--border)' },
   closeBtn: { background:'none', border:'none', color:'var(--text2)', cursor:'pointer', display:'flex' },
 }
