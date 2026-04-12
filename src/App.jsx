@@ -1,11 +1,14 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import LandingPage from './pages/LandingPage'
-import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import DashboardPage from './pages/DashboardPage'
 import ApplicationsPage from './pages/ApplicationsPage'
+import InsightsPage from './pages/InsightsPage'
+import BenchmarkPage from './pages/BenchmarkPage'
 import ProfilePage from './pages/ProfilePage'
+import SettingsPage from './pages/SettingsPage'
 import AdminLoginPage from './pages/AdminLoginPage'
+import AdminBenchmarkApprovalPage from './pages/AdminBenchmarkApprovalPage'
 import { AdminDashboardPage, AdminUsersPage, AdminApplicationsPage, AdminAnalyticsPage } from './pages/AdminDashboardPage'
 import Layout from './components/layout/Layout'
 
@@ -17,24 +20,25 @@ function PrivateRoute({ children }) {
 export default function App() {
   return (
     <Routes>
-      {/* Landing (has login + register modals built in) */}
       <Route path="/" element={<LandingPage />} />
 
-      {/* Forgot password still needs its own page */}
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-
       {/* Admin */}
-      <Route path="/admin/login"        element={<AdminLoginPage />} />
-      <Route path="/admin/dashboard"    element={<AdminDashboardPage />} />
-      <Route path="/admin/users"        element={<AdminUsersPage />} />
+      <Route path="/admin/login" element={<AdminLoginPage />} />
+      <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+      <Route path="/admin/users" element={<AdminUsersPage />} />
       <Route path="/admin/applications" element={<AdminApplicationsPage />} />
-      <Route path="/admin/analytics"    element={<AdminAnalyticsPage />} />
+      <Route path="/admin/benchmark" element={<AdminBenchmarkApprovalPage />} />
+      <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
+      
 
       {/* User app (protected) */}
       <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-        <Route path="dashboard"    element={<DashboardPage />} />
+        <Route path="dashboard" element={<DashboardPage />} />
         <Route path="applications" element={<ApplicationsPage />} />
-        <Route path="profile"      element={<ProfilePage />} />
+        <Route path="insights" element={<InsightsPage />} />
+        <Route path="benchmark" element={<BenchmarkPage />} />
+        <Route path="profile" element={<ProfilePage />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

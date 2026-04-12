@@ -12,18 +12,18 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
-          <App />
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              style: {
-                background: 'var(--surface)',
-                color: 'var(--text)',
-                border: '1px solid var(--border)',
-                fontFamily: 'DM Sans, sans-serif'
-              }
-            }}
-          />
+            <App />
+            <Toaster
+              position="top-right"
+              toastOptions={{
+                style: {
+                  background: 'var(--surface)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)',
+                  fontFamily: 'DM Sans, sans-serif'
+                }
+              }}
+            />
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>

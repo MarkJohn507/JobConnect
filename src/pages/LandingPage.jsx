@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useTheme } from '../context/ThemeContext'
-import { login, register, updateUserProfile, logout } from '../firebase/firestore'
+import { getAuth, signInWithPopup, GoogleAuthProvider } from 'firebase/auth'
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase/config'
-import { doc, getDoc } from 'firebase/firestore'
 import toast from 'react-hot-toast'
-import { Sun, Moon, Eye, EyeOff, Loader, X, ArrowLeft } from 'lucide-react'
+import { Sun, Moon, Loader } from 'lucide-react'
+
+const ALLOWED_DOMAIN = 'thelewiscollege.edu.ph' // confirm exact domain with IT
 
 const MOCK = [
-  { company:'Google', role:'Software Intern', status:'Interview', color:'#4ade80', bg:'#1a3a2a' },
-  { company:'Meta',   role:'Product Intern',  status:'Applied',   color:'#60a5fa', bg:'#1e3a5f' },
-  { company:'Grab',   role:'Backend Intern',  status:'Offered',   color:'#fbbf24', bg:'#2d2a1a' },
-  { company:'Shopee', role:'Frontend Intern', status:'Rejected',  color:'#f87171', bg:'#3a1a1a' },
+  { company:'Google', role:'Software Intern', status:'Interview', color:'#facc15', bg:'rgba(250,204,21,0.12)' },
+  { company:'Meta',   role:'Product Intern',  status:'Applied',   color:'#60a5fa', bg:'rgba(96,165,250,0.12)' },
+  { company:'Grab',   role:'Backend Intern',  status:'Offer',     color:'#4ade80', bg:'rgba(74,222,128,0.12)' },
+  { company:'Shopee', role:'Frontend Intern', status:'Rejected',  color:'#f87171', bg:'rgba(248,113,113,0.12)' },
 ]
 
 const FEATURES = [
@@ -21,216 +23,85 @@ const FEATURES = [
   { e:'📊', title:'Progress Dashboard', desc:'Visualize your job search with live stats and a status breakdown chart.' },
 ]
 
-// ── Login Modal ───────────────────────────────────────
-function LoginModal({ onClose, onSwitchRegister }) {
-  const [email, setEmail]       = useState('')
-  const [password, setPassword] = useState('')
-  const [showPass, setShowPass] = useState(false)
-  const [loading, setLoading]   = useState(false)
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" style={{ flexShrink:0 }}>
+      <path fill="#FFC107" d="M43.6 20H24v8h11.3C33.6 33.1 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 19.6-8 19.6-20 0-1.3-.1-2.7-.4-4z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 16 19 13 24 13c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4c-7.7 0-14.3 4.4-17.7 10.7z"/>
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-1.9 13.5-5l-6.2-5.2C29.4 35.6 26.8 36 24 36c-5.2 0-9.6-2.9-11.3-7.1l-6.6 4.8C9.8 39.7 16.4 44 24 44z"/>
+      <path fill="#1976D2" d="M43.6 20H24v8h11.3c-.9 2.4-2.5 4.4-4.6 5.8l6.2 5.2C40.8 35.5 44 30.2 44 24c0-1.3-.1-2.7-.4-4z"/>
+    </svg>
+  )
+}
+
+// ── Shared Google Sign-In logic ───────────────────────
+function useGoogleSignIn() {
+  const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
-  const handleSubmit = async e => {
-    e.preventDefault()
+  const signIn = async () => {
     setLoading(true)
+    const auth     = getAuth()
+    const provider = new GoogleAuthProvider()
+    provider.setCustomParameters({ hd: ALLOWED_DOMAIN })
+
     try {
-      const cred = await login(email, password)
-      const userDoc = await getDoc(doc(db, 'users', cred.user.uid))
-      if (!userDoc.exists()) {
-        await logout()
-        toast.error('Invalid email or password.')
-        setLoading(false)
+      const cred  = await signInWithPopup(auth, provider)
+      const user  = cred.user
+      const email = user.email ?? ''
+
+      // Hard domain enforcement — hd param is hint only (FR-02)
+      if (!email.endsWith(`@${ALLOWED_DOMAIN}`)) {
+        await auth.signOut()
+        toast.error('Only Lewis College institutional accounts are allowed.')
         return
       }
-      toast.success('Welcome back!')
-      navigate('/dashboard')
-    } catch (err) {
-      toast.error('Invalid email or password.')
-    } finally {
-      setLoading(false)
-    }
-  }
 
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"24px 16px" }}>
-        <div className="fade-in" style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:16, width:"100%", maxWidth:420 }}>
-        <div style={m.head}>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <div style={m.brandIcon}>JC</div>
-            <span style={m.brandName}>Sign In</span>
-          </div>
-          <button style={m.closeBtn} onClick={onClose}><X size={18}/></button>
-        </div>
+      // Create Firestore profile on first sign-in (FR-03)
+      const userRef = doc(db, 'users', user.uid)
+      const snap    = await getDoc(userRef)
 
-        <div style={{ padding:'24px' }}>
-          <form onSubmit={handleSubmit}>
-            <div className="field">
-              <label className="label">Email</label>
-              <input className="input" type="email" value={email} required
-                onChange={e => setEmail(e.target.value)} placeholder="you@email.com" autoFocus/>
-            </div>
-            <div className="field">
-              <label className="label">Password</label>
-              <div style={{ position:'relative' }}>
-                <input className="input" type={showPass?'text':'password'} value={password} required
-                  onChange={e => setPassword(e.target.value)} placeholder="••••••••" style={{ paddingRight:40 }}/>
-                <button type="button" onClick={() => setShowPass(p=>!p)} style={m.eyeBtn} tabIndex={-1}>
-                  {showPass ? <EyeOff size={16}/> : <Eye size={16}/>}
-                </button>
-              </div>
-            </div>
-            <div style={{ textAlign:'right', marginBottom:16 }}>
-              <Link to="/forgot-password" style={{ fontSize:12, color:'var(--accent)', textDecoration:'none', fontWeight:500 }}>
-                Forgot password?
-              </Link>
-            </div>
-            <button type="submit" className="btn-primary" disabled={loading}
-              style={{ width:'100%', justifyContent:'center', padding:'11px' }}>
-              {loading ? <Loader size={16} className="spin"/> : 'Sign In'}
-            </button>
-          </form>
-
-          <p style={{ textAlign:'center', fontSize:13, color:'var(--text2)', marginTop:20 }}>
-            No account?{' '}
-            <button onClick={onSwitchRegister} style={{ background:'none', border:'none', color:'var(--accent)', fontWeight:600, fontSize:13, cursor:'pointer', padding:0, fontFamily:'var(--font)' }}>
-              Create one
-            </button>
-          </p>
-        </div>
-        </div>
-    </div>
-  )
-}
-
-// ── Register Modal ────────────────────────────────────
-function RegisterModal({ onClose, onSwitchLogin }) {
-  const [name, setName]         = useState('')
-  const [email, setEmail]       = useState('')
-  const [password, setPassword] = useState('')
-  const [confirm, setConfirm]   = useState('')
-  const [showPass, setShowPass] = useState(false)
-  const [showConf, setShowConf] = useState(false)
-  const [loading, setLoading]   = useState(false)
-  const navigate = useNavigate()
-
-  const handleSubmit = async e => {
-    e.preventDefault()
-    if (password !== confirm) return toast.error('Passwords do not match.')
-    if (password.length < 6)  return toast.error('Password must be at least 6 characters.')
-    setLoading(true)
-    try {
-      await register(email, password)
-      await updateUserProfile(name)
-      toast.success('Account created!')
-      navigate('/dashboard')
-    } catch (err) {
-      const m = {
-        'auth/email-already-in-use':  'Email is already registered.',
-        'auth/invalid-email':          'Invalid email address.',
-        'auth/weak-password':          'Password is too weak.',
-        'auth/admin-email-reserved':   'This email cannot be used for registration.',
+      if (!snap.exists()) {
+        await setDoc(userRef, {
+          uid:       user.uid,
+          name:      user.displayName ?? '',
+          email:     email,
+          role:      'user',
+          createdAt: serverTimestamp(),
+        })
       }
-      toast.error(m[err.code] || 'Registration failed.')
+
+      // Role-based redirect (FR-26)
+      const role = snap.exists() ? snap.data().role : 'user'
+      toast.success('Welcome!')
+      navigate(role === 'admin' ? '/admin' : '/dashboard')
+
+    } catch (err) {
+      if (
+        err.code === 'auth/popup-closed-by-user' ||
+        err.code === 'auth/cancelled-popup-request'
+      ) return // user closed popup, no toast needed
+
+      if (err.code === 'auth/network-request-failed') {
+        toast.error('Network error. Check your connection and try again.')
+        return
+      }
+      toast.error('Sign-in failed. Please try again.') // FR-04
     } finally {
       setLoading(false)
     }
   }
 
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:"24px 16px" }}>
-        <div className="fade-in" style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:16, width:"100%", maxWidth:420 }}>
-        <div style={m.head}>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <div style={m.brandIcon}>JC</div>
-            <span style={m.brandName}>Create Account</span>
-          </div>
-          <button style={m.closeBtn} onClick={onClose}><X size={18}/></button>
-        </div>
-
-        <div style={{ padding:'24px' }}>
-          <form onSubmit={handleSubmit}>
-            <div className="field">
-              <label className="label">Full Name</label>
-              <input className="input" type="text" value={name} required
-                onChange={e => setName(e.target.value)} placeholder="Juan dela Cruz" autoFocus/>
-            </div>
-            <div className="field">
-              <label className="label">Email</label>
-              <input className="input" type="email" value={email} required
-                onChange={e => setEmail(e.target.value)} placeholder="you@email.com"/>
-            </div>
-            <div className="field">
-              <label className="label">Password</label>
-              <div style={{ position:'relative' }}>
-                <input className="input" type={showPass?'text':'password'} value={password} required
-                  onChange={e => setPassword(e.target.value)} placeholder="Min. 6 characters" style={{ paddingRight:40 }}/>
-                <button type="button" onClick={() => setShowPass(p=>!p)} style={m.eyeBtn} tabIndex={-1}>
-                  {showPass ? <EyeOff size={16}/> : <Eye size={16}/>}
-                </button>
-              </div>
-            </div>
-            <div className="field">
-              <label className="label">Confirm Password</label>
-              <div style={{ position:'relative' }}>
-                <input className="input" type={showConf?'text':'password'} value={confirm} required
-                  onChange={e => setConfirm(e.target.value)} placeholder="Repeat password" style={{ paddingRight:40 }}/>
-                <button type="button" onClick={() => setShowConf(p=>!p)} style={m.eyeBtn} tabIndex={-1}>
-                  {showConf ? <EyeOff size={16}/> : <Eye size={16}/>}
-                </button>
-              </div>
-            </div>
-            <button type="submit" className="btn-primary" disabled={loading}
-              style={{ width:'100%', justifyContent:'center', padding:'11px', marginTop:4 }}>
-              {loading ? <Loader size={16} className="spin"/> : 'Create Account'}
-            </button>
-          </form>
-
-          <p style={{ textAlign:'center', fontSize:13, color:'var(--text2)', marginTop:20 }}>
-            Already have an account?{' '}
-            <button onClick={onSwitchLogin} style={{ background:'none', border:'none', color:'var(--accent)', fontWeight:600, fontSize:13, cursor:'pointer', padding:0, fontFamily:'var(--font)' }}>
-              Sign in
-            </button>
-          </p>
-        </div>
-        </div>
-    </div>
-  )
-}
-
-const m = {
-  head: { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'20px 24px', borderBottom:'1px solid var(--border)' },
-  brandIcon: { width:36, height:36, borderRadius:10, background:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:'#fff' },
-  brandName: { fontFamily:'var(--font-display)', fontSize:20, color:'var(--text)' },
-  closeBtn: { background:'none', border:'none', color:'var(--text2)', cursor:'pointer', display:'flex', padding:4 },
-  eyeBtn: { position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'var(--text2)', cursor:'pointer', display:'flex', padding:2 },
+  return { signIn, loading }
 }
 
 // ── Landing Page ──────────────────────────────────────
 export default function LandingPage() {
   const { dark, toggle } = useTheme()
-  // 'none' | 'login' | 'register'
-  const [modal, setModal] = useState('none')
-
-  // Prevent body scroll when modal is open
-  useEffect(() => {
-    document.body.style.overflow = modal !== 'none' ? 'hidden' : ''
-    return () => { document.body.style.overflow = '' }
-  }, [modal])
+  const { signIn, loading } = useGoogleSignIn()
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg)' }}>
-      {/* Modals */}
-      {modal === 'login' && (
-        <LoginModal
-          onClose={() => setModal('none')}
-          onSwitchRegister={() => setModal('register')}
-        />
-      )}
-      {modal === 'register' && (
-        <RegisterModal
-          onClose={() => setModal('none')}
-          onSwitchLogin={() => setModal('login')}
-        />
-      )}
 
       {/* Theme toggle */}
       <button onClick={toggle} style={s.themeBtn} aria-label="Toggle theme">
@@ -243,16 +114,15 @@ export default function LandingPage() {
           <div style={s.logoIcon}>JC</div>
           <span style={s.logoText}>Job<em>Connect</em></span>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-          <button onClick={() => setModal('login')} style={s.navLink}>Sign In</button>
-          <button onClick={() => setModal('register')} style={s.navBtn}>Get Started</button>
-        </div>
+        <button onClick={signIn} disabled={loading} style={s.navGoogleBtn}>
+          {loading ? <Loader size={14} className="spin"/> : <><GoogleIcon/> Sign in with Google</>}
+        </button>
       </nav>
 
       {/* Hero */}
       <section className="hero-section">
         <div className="hero-inner">
-          <div style={s.badge}>Free for students &amp; graduates</div>
+          <div style={s.badge}>Exclusive to Lewis College students &amp; graduates</div>
           <h1 className="hero-title" style={s.heroTitle}>
             Track every job<br/>application.<br/><em>Miss nothing.</em>
           </h1>
@@ -260,16 +130,23 @@ export default function LandingPage() {
             Job Connect helps you organize every internship and job application in one place
             — deadlines, statuses, resumes, and more.
           </p>
-          <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-            <button onClick={() => setModal('register')} style={s.ctaPrimary}>Create Free Account</button>
-            <button onClick={() => setModal('login')}    style={s.ctaOutline}>Sign In</button>
-          </div>
+
+          <button onClick={signIn} disabled={loading} style={s.ctaGoogle}>
+            {loading
+              ? <Loader size={16} className="spin"/>
+              : <><GoogleIcon/> Sign in with Google</>}
+          </button>
+          <p style={{ fontSize:12, color:'var(--text2)', marginTop:12 }}>
+            Use your <strong>@{ALLOWED_DOMAIN}</strong> account to get started.
+          </p>
         </div>
 
         {/* Mock preview card */}
         <div className="mock-card fade-in" style={s.mockCard}>
           <div style={{ display:'flex', gap:6, marginBottom:16 }}>
-            {['#f87171','#fbbf24','#4ade80'].map(c => <div key={c} style={{ width:10, height:10, borderRadius:'50%', background:c }}/>)}
+            {['#f87171','#fbbf24','#4ade80'].map(c =>
+              <div key={c} style={{ width:10, height:10, borderRadius:'50%', background:c }}/>
+            )}
           </div>
           {MOCK.map(item => (
             <div key={item.company} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 0', borderBottom:'1px solid var(--border)' }}>
@@ -277,7 +154,9 @@ export default function LandingPage() {
                 <div style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{item.company}</div>
                 <div style={{ fontSize:12, color:'var(--text2)' }}>{item.role}</div>
               </div>
-              <span style={{ fontSize:11, fontWeight:600, padding:'3px 9px', borderRadius:6, color:item.color, background:item.bg }}>{item.status}</span>
+              <span style={{ fontSize:11, fontWeight:600, padding:'3px 9px', borderRadius:6, color:item.color, background:item.bg }}>
+                {item.status}
+              </span>
             </div>
           ))}
         </div>
@@ -289,6 +168,7 @@ export default function LandingPage() {
         <div className="feat-grid">
           {FEATURES.map(f => (
             <div key={f.title} style={s.featCard}>
+              <div style={{ fontSize:24, marginBottom:10 }}>{f.e}</div>
               <h3 style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:8 }}>{f.title}</h3>
               <p style={{ fontSize:13, color:'var(--text2)', lineHeight:1.6 }}>{f.desc}</p>
             </div>
@@ -301,13 +181,19 @@ export default function LandingPage() {
         <h2 style={{ fontFamily:'var(--font-display)', fontSize:30, color:'var(--text)', marginBottom:10 }}>
           Ready to organize your job search?
         </h2>
-        <p style={{ color:'var(--text2)', fontSize:15, marginBottom:28 }}>Free to use. No credit card required.</p>
-        <button onClick={() => setModal('register')} style={s.ctaPrimary}>Get Started for Free</button>
+        <p style={{ color:'var(--text2)', fontSize:15, marginBottom:28 }}>
+          Free for all Lewis College students and recent graduates.
+        </p>
+        <button onClick={signIn} disabled={loading} style={s.ctaGoogle}>
+          {loading
+            ? <Loader size={16} className="spin"/>
+            : <><GoogleIcon/> Sign in with Google</>}
+        </button>
       </section>
 
       {/* Footer */}
       <footer className="site-footer" style={s.footer}>
-        <p style={{ color:'var(--text2)', fontSize:13 }}>© 2025 Job Connect · Built for students &amp; fresh graduates</p>
+        <p style={{ color:'var(--text2)', fontSize:13 }}>© 2026 Job Connect · Built for Lewis College students &amp; graduates</p>
         <Link to="/admin/login" style={{ color:'var(--text2)', fontSize:12, textDecoration:'none' }}>Admin</Link>
       </footer>
     </div>
@@ -315,19 +201,17 @@ export default function LandingPage() {
 }
 
 const s = {
-  themeBtn: { position:'fixed', top:16, right:16, zIndex:200, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, padding:'8px 10px', color:'var(--text2)', cursor:'pointer', display:'flex', alignItems:'center' },
-  logoIcon: { width:36, height:36, borderRadius:10, background:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 },
-  logoText: { fontFamily:'var(--font-display)', fontSize:20, color:'var(--text)' },
-  navLink: { background:'none', border:'none', color:'var(--text2)', fontSize:14, fontWeight:500, cursor:'pointer', fontFamily:'var(--font)', padding:'8px 4px' },
-  navBtn: { padding:'8px 18px', background:'var(--accent)', color:'#fff', borderRadius:8, border:'none', fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:'var(--font)' },
-  badge: { display:'inline-block', padding:'4px 14px', borderRadius:20, background:'rgba(108,99,255,0.15)', color:'var(--accent)', fontSize:12, fontWeight:600, marginBottom:20 },
-  heroTitle: { fontFamily:'var(--font-display)', fontSize:46, color:'var(--text)', lineHeight:1.15, marginBottom:20 },
-  ctaPrimary: { padding:'12px 26px', background:'var(--accent)', color:'#fff', borderRadius:10, border:'none', fontSize:15, fontWeight:600, cursor:'pointer', fontFamily:'var(--font)' },
-  ctaOutline: { padding:'12px 26px', border:'1px solid var(--border)', color:'var(--text)', borderRadius:10, background:'none', fontSize:15, cursor:'pointer', fontFamily:'var(--font)' },
-  mockCard: { background:'var(--surface)', border:'1px solid var(--border)', borderRadius:16, padding:20, boxShadow:'0 16px 48px rgba(0,0,0,0.25)' },
+  themeBtn:    { position:'fixed', top:16, right:16, zIndex:200, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, padding:'8px 10px', color:'var(--text2)', cursor:'pointer', display:'flex', alignItems:'center' },
+  logoIcon:    { width:36, height:36, borderRadius:10, background:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:'#fff', flexShrink:0 },
+  logoText:    { fontFamily:'var(--font-display)', fontSize:20, color:'var(--text)' },
+  navGoogleBtn:{ display:'flex', alignItems:'center', gap:8, padding:'8px 16px', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'var(--font)' },
+  badge:       { display:'inline-block', padding:'4px 14px', borderRadius:20, background:'rgba(108,99,255,0.15)', color:'var(--accent)', fontSize:12, fontWeight:600, marginBottom:20 },
+  heroTitle:   { fontFamily:'var(--font-display)', fontSize:46, color:'var(--text)', lineHeight:1.15, marginBottom:20 },
+  ctaGoogle:   { display:'flex', alignItems:'center', gap:10, padding:'12px 26px', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, color:'var(--text)', fontSize:15, fontWeight:600, cursor:'pointer', fontFamily:'var(--font)' },
+  mockCard:    { background:'var(--surface)', border:'1px solid var(--border)', borderRadius:16, padding:20, boxShadow:'0 16px 48px rgba(0,0,0,0.25)' },
   featSection: { padding:'72px 48px', maxWidth:1100, margin:'0 auto' },
-  sectionTitle: { fontFamily:'var(--font-display)', fontSize:30, color:'var(--text)', textAlign:'center', marginBottom:36 },
-  featCard: { background:'var(--surface)', border:'1px solid var(--border)', borderRadius:14, padding:24 },
-  ctaSection: { textAlign:'center', padding:'72px 48px', borderTop:'1px solid var(--border)' },
-  footer: { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'18px 48px', borderTop:'1px solid var(--border)' },
+  sectionTitle:{ fontFamily:'var(--font-display)', fontSize:30, color:'var(--text)', textAlign:'center', marginBottom:36 },
+  featCard:    { background:'var(--surface)', border:'1px solid var(--border)', borderRadius:14, padding:24 },
+  ctaSection:  { textAlign:'center', padding:'72px 48px', borderTop:'1px solid var(--border)' },
+  footer:      { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'18px 48px', borderTop:'1px solid var(--border)' },
 }

@@ -4,53 +4,66 @@ import {
   signOut,
   updateProfile,
   sendPasswordResetEmail,
-  fetchSignInMethodsForEmail
+  fetchSignInMethodsForEmail,
 } from 'firebase/auth'
 import {
-  collection, addDoc, updateDoc, deleteDoc, setDoc,
-  doc, getDocs, query, where, serverTimestamp, getDoc
+  collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  setDoc,
+  doc,
+  getDocs,
+  getDoc,
+  query,
+  where,
+  serverTimestamp,
 } from 'firebase/firestore'
 import { auth, db, CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from './config'
 
-// ── Helpers ───────────────────────────────────────────
-// Check if a UID belongs to an admin
-export const isAdminUID = async (uid) => {
+// ─────────────────────────────────────────────
+// ADMIN HELPERS
+// ─────────────────────────────────────────────
+export const isAdminUID = async uid => {
   const snap = await getDoc(doc(db, 'admins', uid))
   return snap.exists()
 }
 
-// Check if an email is already registered as an admin
-export const isAdminEmail = async (email) => {
+export const isAdminEmail = async email => {
   const snap = await getDocs(
     query(collection(db, 'admins'), where('email', '==', email.toLowerCase()))
   )
   return !snap.empty
 }
 
-// ── Auth ──────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// AUTH
+// ─────────────────────────────────────────────
 export const register = async (email, password) => {
-  // Block registration if email is already used by an admin account
-  // Wrapped in try/catch so a Firestore permission error never blocks registration
-  try {
-    const adminEmail = await isAdminEmail(email)
-    if (adminEmail) {
-      const err = new Error('This email is reserved and cannot be used for registration.')
-      err.code = 'auth/admin-email-reserved'
-      throw err
-    }
-  } catch (e) {
-    // Only re-throw if it is our own admin-email-reserved error
-    if (e.code === 'auth/admin-email-reserved') throw e
-    // Otherwise (permission denied, network, etc.) just continue
+  const lowerEmail = email.toLowerCase()
+
+  const adminEmail = await isAdminEmail(lowerEmail)
+  if (adminEmail) {
+    const err = new Error('This email is reserved and cannot be used for registration.')
+    err.code = 'auth/admin-email-reserved'
+    throw err
   }
 
   const cred = await createUserWithEmailAndPassword(auth, email, password)
+
   await setDoc(doc(db, 'users', cred.user.uid), {
-    email: email.toLowerCase(),
+    uid: cred.user.uid,
+    email: lowerEmail,
     displayName: '',
+    name: '',
+    contact: '',
+    batchYear: '',
+    role: 'user',
     disabled: false,
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   })
+
   return cred
 }
 
@@ -59,12 +72,16 @@ export const login = (email, password) =>
 
 export const logout = () => signOut(auth)
 
-export const updateUserProfile = async (name) => {
+export const updateUserProfile = async name => {
   await updateProfile(auth.currentUser, { displayName: name })
-  await updateDoc(doc(db, 'users', auth.currentUser.uid), { displayName: name })
+  await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+    displayName: name,
+    name,
+    updatedAt: serverTimestamp(),
+  })
 }
 
-export const resetPassword = async (email) => {
+export const resetPassword = async email => {
   const methods = await fetchSignInMethodsForEmail(auth, email)
   if (methods.length === 0) {
     const err = new Error('No account found with that email address.')
@@ -74,23 +91,35 @@ export const resetPassword = async (email) => {
   return sendPasswordResetEmail(auth, email)
 }
 
-// ── Applications ──────────────────────────────────────
+// ─────────────────────────────────────────────
+// APPLICATIONS
+// ─────────────────────────────────────────────
 export const addApplication = (uid, data) =>
   addDoc(collection(db, 'applications'), {
-    ...data, uid,
+    uid,
+    company: data.company || '',
+    position: data.position || '',
+    industry: data.industry || '',
+    status: data.status || 'Applied',
+    appliedDate: data.appliedDate || '',
     createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
+    updatedAt: serverTimestamp(),
   })
 
 export const updateApplication = (id, data) =>
   updateDoc(doc(db, 'applications', id), {
-    ...data, updatedAt: serverTimestamp()
+    company: data.company || '',
+    position: data.position || '',
+    industry: data.industry || '',
+    status: data.status || 'Applied',
+    appliedDate: data.appliedDate || '',
+    updatedAt: serverTimestamp(),
   })
 
-export const deleteApplication = (id) =>
+export const deleteApplication = id =>
   deleteDoc(doc(db, 'applications', id))
 
-export const getUserApplications = async (uid) => {
+export const getUserApplications = async uid => {
   const q = query(collection(db, 'applications'), where('uid', '==', uid))
   const snap = await getDocs(q)
   return snap.docs
@@ -98,17 +127,113 @@ export const getUserApplications = async (uid) => {
     .sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0))
 }
 
-// ── Cloudinary Upload ─────────────────────────────────
-export const uploadResume = async (file) => {
+// ─────────────────────────────────────────────
+// DOCUMENTS / CLOUDINARY
+// ─────────────────────────────────────────────
+export const uploadResume = async file => {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
   formData.append('resource_type', 'raw')
+
   const res = await fetch(
     `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`,
     { method: 'POST', body: formData }
   )
+
   if (!res.ok) throw new Error('Upload failed')
+
   const data = await res.json()
   return data.secure_url
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOGGING
+// ─────────────────────────────────────────────
+export const logAuditEvent = async ({
+  action,
+  targetType,
+  targetId,
+  details = {},
+}) => {
+  const user = auth.currentUser
+  if (!user) return
+
+  await addDoc(collection(db, 'auditLogs'), {
+    actorId: user.uid,
+    actorEmail: user.email || '',
+    action,
+    targetType,
+    targetId,
+    details,
+    createdAt: serverTimestamp(),
+  })
+}
+
+// ─────────────────────────────────────────────
+// BENCHMARK APPROVAL
+// ─────────────────────────────────────────────
+export const MIN_BENCHMARK_DATA_POINTS = 10
+
+export const getBenchmarkSettings = async () => {
+  const snap = await getDoc(doc(db, 'benchmarkSettings', 'global'))
+  return snap.exists()
+    ? snap.data()
+    : {
+        approved: false,
+        approvedBy: '',
+        approvedAt: null,
+        updatedAt: null,
+      }
+}
+
+export const updateBenchmarkApproval = async approved => {
+  const user = auth.currentUser
+  if (!user) throw new Error('Not signed in')
+
+  await setDoc(
+    doc(db, 'benchmarkSettings', 'global'),
+    {
+      approved,
+      approvedBy: user.uid,
+      approvedAt: approved ? serverTimestamp() : null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  )
+
+  await logAuditEvent({
+    action: approved ? 'BENCHMARK_APPROVED' : 'BENCHMARK_REVOKED',
+    targetType: 'benchmarkSettings',
+    targetId: 'global',
+    details: { approved },
+  })
+}
+
+export const upsertBenchmarkReport = async (reportId, reportData) => {
+  const user = auth.currentUser
+  if (!user) throw new Error('Not signed in')
+
+  await setDoc(
+    doc(db, 'benchmarkReports', reportId),
+    {
+      ...reportData,
+      generatedBy: user.uid,
+      generatedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  )
+
+  await logAuditEvent({
+    action: 'BENCHMARK_REPORT_UPSERTED',
+    targetType: 'benchmarkReports',
+    targetId: reportId,
+    details: { reportId },
+  })
+}
+
+export const getBenchmarkReport = async (reportId = '2026-report') => {
+  const snap = await getDoc(doc(db, 'benchmarkReports', reportId))
+  return snap.exists() ? snap.data() : null
 }
